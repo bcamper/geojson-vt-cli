@@ -63,14 +63,14 @@ for (var z = start_zoom; z <= end_zoom; z++) {
       var tile = tileindex.getTile(z, x, y);
       if (!tile) {
         console.log('NO TILE AT: ' + z + ', ' + x + ', ' + y + ' (skipping)');
-        break;
+        continue;
       }
 
       var buff = vtpbf.fromGeojsonVt({ 'geojsonLayer': tile });
       if (!buff) {
         console.log('ERROR CREATING BUFF AT ' + z + ', ' + x + ', ' + y);
-        break;
-      } 
+        continue;
+      }
 
       // Create 'x' directory
       if (!fs.existsSync(path)){
