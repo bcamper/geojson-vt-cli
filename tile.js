@@ -1,3 +1,5 @@
+var SphericalMercator = require('sphericalmercator');
+var geojsonExtent = require('geojson-extent');
 var geojsonVt = require('geojson-vt');
 var vtpbf = require('vt-pbf');
 var fs = require("fs");
@@ -27,7 +29,7 @@ if (!fs.existsSync(output)){
 }
 console.log('Writing files to ' + output);
 
-
+// geojson-vt setup
 var tileOptions = {
     maxZoom: 15,  // max zoom to preserve detail on
     tolerance: 1.5, // simplification tolerance (higher means simpler)
@@ -40,21 +42,30 @@ var tileOptions = {
 };
 var tileindex = geojsonVt(orig, tileOptions);
 
-
-
-var start_zoom = 1;
+var start_zoom = 0;
 var end_zoom = zoom;
-var start_x = 0;
-var end_x = 1;
-var start_y = 0;
-var end_y = 1;
+var start_x, end_x, start_y, end_y;
+var tile_count = 0;
+var merc = new SphericalMercator({ size: 256 }); // for mercator math
+var bounds = geojsonExtent(orig); // latlng bounds of geometry
 
 for (var z = start_zoom; z <= end_zoom; z++) {
+  // Get tile bounds of geometry at current zoom
+  var tile_bounds = merc.xyz(bounds, z);
+  var candidate_count = (tile_bounds.maxX - tile_bounds.minX + 1) * (tile_bounds.maxY - tile_bounds.minY + 1);
+  var tile_zoom_count = 0;
+  console.log('Zoom ' + z + ', ' + candidate_count + ' candidate tiles');
 
   // Create 'z' directory
   if (!fs.existsSync(output + '/' + z + '/')){
       fs.mkdirSync(output + '/' + z + '/');
   }
+
+  // Scan tile rows/columns
+  start_x = tile_bounds.minX;
+  start_y = tile_bounds.minY;
+  end_x = tile_bounds.maxX;
+  end_y = tile_bounds.maxY;
 
   for (var x = start_x; x <= end_x; x++) {
     var path = output + '/' + z + '/' + x;
@@ -62,13 +73,13 @@ for (var z = start_zoom; z <= end_zoom; z++) {
     for (var y = start_y; y <= end_y; y++) {
       var tile = tileindex.getTile(z, x, y);
       if (!tile) {
-        console.log('NO TILE AT: ' + z + ', ' + x + ', ' + y + ' (skipping)');
+        // console.log('NO TILE AT: ' + z + ', ' + x + ', ' + y + ' (skipping)');
         continue;
       }
 
       var buff = vtpbf.fromGeojsonVt({ 'geojsonLayer': tile });
       if (!buff) {
-        console.log('ERROR CREATING BUFF AT ' + z + ', ' + x + ', ' + y);
+        console.error('ERROR CREATING BUFF AT ' + z + ', ' + x + ', ' + y);
         continue;
       }
 
@@ -78,14 +89,12 @@ for (var z = start_zoom; z <= end_zoom; z++) {
       }
 
       fs.writeFileSync(path + '/' + y + '.mvt', buff);
-
+      tile_zoom_count++;
     }
   }
 
-  // At each zoom level, end_x and end_y will grow
-  end_x = end_x * 2 + 1;
-  end_y = end_y * 2 + 1;
+  tile_count += tile_zoom_count;
+  console.log('Finished zoom ' + z + ', ' + tile_zoom_count + ' tiles generated');
 }
 
-
-
+console.log('-----\nTotal tiles generated:', tile_count);

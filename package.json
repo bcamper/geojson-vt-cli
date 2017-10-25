@@ -20,8 +20,10 @@
   },
   "homepage": "https://github.com/rfriberg/geojson-vt-cli#readme",
   "dependencies": {
+    "geojson-extent": "^0.3.2",
     "geojson-vt": "^2.4.0",
     "minimist": "^1.2.0",
+    "sphericalmercator": "^1.0.5",
     "vt-pbf": "^2.1.2"
   }
 }
