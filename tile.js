@@ -3,7 +3,7 @@ var vtpbf = require('vt-pbf');
 var fs = require("fs");
 var argv = require('minimist')(process.argv.slice(2), {
   alias: { d: 'data', o: 'out', z: 'zoom' },
-  default: { z: '5', o: 'cache/' }
+  default: { z: '15', o: 'cache/' }
 });
 
 //console.log(argv);
@@ -29,10 +29,10 @@ console.log('Writing files to ' + output);
 
 
 var tileOptions = {
-    maxZoom: 16,  // max zoom to preserve detail on
-    tolerance: 5, // simplification tolerance (higher means simpler)
+    maxZoom: 15,  // max zoom to preserve detail on
+    tolerance: 1.5, // simplification tolerance (higher means simpler)
     extent: 4096, // tile extent (both width and height)
-    buffer: 64,   // tile buffer on each side
+    buffer: 0,   // tile buffer on each side
     debug: 1,      // logging level (0 to disable, 1 or 2)
 
     indexMaxZoom: 0,        // max zoom in the initial tile index
