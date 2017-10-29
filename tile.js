@@ -5,7 +5,7 @@ var vtpbf = require('vt-pbf');
 var fs = require("fs");
 var argv = require('minimist')(process.argv.slice(2), {
   alias: { d: 'data', o: 'out', z: 'zoom' },
-  default: { z: '15', o: 'cache/' }
+  default: { z: '15', o: 'tiles/' }
 });
 
 //console.log(argv);
