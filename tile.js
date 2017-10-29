@@ -3,30 +3,58 @@ var geojsonExtent = require('geojson-extent');
 var geojsonVt = require('geojson-vt');
 var vtpbf = require('vt-pbf');
 var fs = require("fs");
-var argv = require('minimist')(process.argv.slice(2), {
+var AWS = require("aws-sdk");
+var minimist = require('minimist');
+
+// command line arguments
+var argv = minimist(process.argv.slice(2), {
   alias: { d: 'data', o: 'out', z: 'zoom' },
   default: { z: '15', o: 'tiles/' }
 });
 
-//console.log(argv);
-
 var input = argv.d;
 var output = argv.o;
 var zoom = argv.z;
-
+var s3public = argv.s3public;
 
 if (!input) {
-  console.log('Need to specify path to data; aborting.');
-  console.log('Try running: node tile.js --data=path/to/data.js');
+  console.log('\ngeojson-vt-cli: create tiles from GeoJSON');
+  console.log('Need to specify path to GeoJSON data; aborting.');
+  console.log('Options:');
+  console.log('-d, --data\tpath to GeoJOSN file');
+  console.log('-o, --out\tpath for output (default local\'/tiles\'), use \'s3://path/to/bucket\' for S3');
+  console.log('--s3public\tif writing to S3, set \'public-read\' ACL on output objects');
+  console.log('-z, --zoom\tmax zoom to tile to (default 15)');
+  console.log('Example: node tile.js --data=path/to/data.geojson\n');
   return;
 }
+
+// remove trailing slash from output
+output = output[output.length-1] === '/' ? output.slice(0, -1) : output;
+
+// writing to S3?
+var S3, s3params = {}, s3uri = 's3://';
+if (output.toLowerCase().indexOf(s3uri) === 0) {
+  S3 = new AWS.S3();
+  output = output.slice(output.toLowerCase().indexOf(s3uri) + s3uri.length);
+  if (s3public) {
+    s3params['ACL'] = 'public-read';
+  }
+}
+
+// read input file
 var orig = JSON.parse(fs.readFileSync(input));
 
-
 // Create output directory
-if (!fs.existsSync(output)){
-  fs.mkdirSync(output);
+if (!S3) {
+  if (!fs.existsSync(output)){
+    fs.mkdirSync(output);
+  }
+  else {
+    // TODO: check for/create S3 bucket
+  }
 }
+
 console.log('Writing files to ' + output);
 
 // geojson-vt setup
@@ -56,8 +84,8 @@ for (var z = start_zoom; z <= end_zoom; z++) {
   var tile_zoom_count = 0;
   console.log('Zoom ' + z + ', ' + candidate_count + ' candidate tiles');
 
-  // Create 'z' directory
-  if (!fs.existsSync(output + '/' + z + '/')){
+  // Create 'z' directory (only if writing locally)
+  if (!S3 && !fs.existsSync(output + '/' + z + '/')){
       fs.mkdirSync(output + '/' + z + '/');
   }
 
@@ -68,8 +96,6 @@ for (var z = start_zoom; z <= end_zoom; z++) {
   end_y = tile_bounds.maxY;
 
   for (var x = start_x; x <= end_x; x++) {
-    var path = output + '/' + z + '/' + x;
-
     for (var y = start_y; y <= end_y; y++) {
       var tile = tileindex.getTile(z, x, y);
       if (!tile) {
@@ -77,18 +103,12 @@ for (var z = start_zoom; z <= end_zoom; z++) {
         continue;
       }
 
-      var buff = vtpbf.fromGeojsonVt({ 'geojsonLayer': tile });
-      if (!buff) {
-        console.error('ERROR CREATING BUFF AT ' + z + ', ' + x + ', ' + y);
+      var data = vtpbf.fromGeojsonVt({ 'geojsonLayer': tile });
+      if (!data) {
+        console.error('ERROR CREATING TILE DATA AT ' + z + ', ' + x + ', ' + y);
         continue;
       }
-
-      // Create 'x' directory
-      if (!fs.existsSync(path)){
-          fs.mkdirSync(path);
-      }
-
-      fs.writeFileSync(path + '/' + y + '.mvt', buff);
+      writeTile(output, x, y, z, data);
       tile_zoom_count++;
     }
   }
@@ -98,3 +118,41 @@ for (var z = start_zoom; z <= end_zoom; z++) {
 }
 
 console.log('-----\nTotal tiles generated:', tile_count);
+
+// --- end main ---
+
+// write a single tile, to local file system or S3
+function writeTile (root, x, y, z, data) {
+  var xdir = root + '/' + z + '/' + x;
+  var path = xdir + '/' + y + '.mvt';
+
+  // write to local file
+  if (!S3) {
+    // Create 'x' directory
+    if (!fs.existsSync(xdir)){
+        fs.mkdirSync(xdir);
+    }
+
+    fs.writeFileSync(path, data);
+  }
+  // write to S3
+  else {
+    // extract string before first slash as S3 bucket
+    var bucket = root;
+    if (bucket.indexOf('/') > -1) {
+      path = path.slice(bucket.indexOf('/') + 1);
+      bucket = bucket.slice(0, bucket.indexOf('/'));
+    }
+
+    S3.putObject(Object.assign({}, s3params, {
+      Body: data,
+      Bucket: bucket,
+      Key: path,
+      ContentType: 'application/x-protobuf'
+    }), function(err, ret) {
+      if (err) {
+        console.error('Error writing to S3!', bucket, path);
+      }
+    });
+  }
+}
