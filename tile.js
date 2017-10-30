@@ -103,7 +103,7 @@ for (var z = start_zoom; z <= end_zoom; z++) {
         continue;
       }
 
-      var data = vtpbf.fromGeojsonVt({ 'geojsonLayer': tile });
+      var data = vtpbf.fromGeojsonVt({ 'default': tile }); // TODO: add option for layer name
       if (!data) {
         console.error('ERROR CREATING TILE DATA AT ' + z + ', ' + x + ', ' + y);
         continue;
