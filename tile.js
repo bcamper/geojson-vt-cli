@@ -5,6 +5,7 @@ var vtpbf = require('vt-pbf');
 var fs = require("fs");
 var AWS = require("aws-sdk");
 var minimist = require('minimist');
+var getCentroidFeatures = require('./centroids');
 
 // command line arguments
 var argv = minimist(process.argv.slice(2), {
@@ -16,6 +17,7 @@ var input = argv.d;
 var output = argv.o;
 var zoom = argv.z;
 var s3public = argv.s3public;
+var generateCentroids = argv.centroids;
 
 if (!input) {
   console.log('\ngeojson-vt-cli: create tiles from GeoJSON');
@@ -25,6 +27,7 @@ if (!input) {
   console.log('-o, --out\tpath for output (default local\'/tiles\'), use \'s3://path/to/bucket\' for S3');
   console.log('--s3public\tif writing to S3, set \'public-read\' ACL on output objects');
   console.log('-z, --zoom\tmax zoom to tile to (default 15)');
+  console.log('--centroids\tgenerate centroid features for polygons (w/property \'centroid: true\')');
   console.log('Example: node tile.js --data=path/to/data.geojson\n');
   return;
 }
@@ -43,7 +46,7 @@ if (output.toLowerCase().indexOf(s3uri) === 0) {
 }
 
 // read input file
-var orig = JSON.parse(fs.readFileSync(input));
+var geojson = JSON.parse(fs.readFileSync(input));
 
 // Create output directory
 if (!S3) {
@@ -57,6 +60,14 @@ if (!S3) {
 
 console.log('Writing files to ' + output);
 
+// optionally generate centroids for polygons
+if (generateCentroids) {
+  if (geojson.type === 'FeatureCollection') {
+    var centroids = getCentroidFeatures(geojson.features);
+    Array.prototype.push.apply(geojson.features, centroids);
+  }
+}
+
 // geojson-vt setup
 var tileOptions = {
     maxZoom: 15,  // max zoom to preserve detail on
@@ -68,14 +79,14 @@ var tileOptions = {
     indexMaxZoom: 0,        // max zoom in the initial tile index
     indexMaxPoints: 100000, // max number of points per tile in the index
 };
-var tileindex = geojsonVt(orig, tileOptions);
+var tileindex = geojsonVt(geojson, tileOptions);
 
 var start_zoom = 0;
 var end_zoom = zoom;
 var start_x, end_x, start_y, end_y;
 var tile_count = 0;
 var merc = new SphericalMercator({ size: 256 }); // for mercator math
-var bounds = geojsonExtent(orig); // latlng bounds of geometry
+var bounds = geojsonExtent(geojson); // latlng bounds of geometry
 
 for (var z = start_zoom; z <= end_zoom; z++) {
   // Get tile bounds of geometry at current zoom
