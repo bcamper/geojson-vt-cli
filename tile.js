@@ -9,8 +9,8 @@ var getCentroidFeatures = require('./centroids');
 
 // command line arguments
 var argv = minimist(process.argv.slice(2), {
-  alias: { d: 'data', o: 'out', z: 'zoom' },
-  default: { z: '15', o: 'tiles/' }
+  alias: { d: 'data', o: 'out', z: 'zoom', l: 'layer' },
+  default: { z: '15', o: 'tiles/', l: 'default' }
 });
 
 var input = argv.d;
@@ -18,15 +18,17 @@ var output = argv.o;
 var zoom = argv.z;
 var s3public = argv.s3public;
 var generateCentroids = argv.centroids;
+var layerName = argv.layer;
 
 if (!input) {
   console.log('\ngeojson-vt-cli: create tiles from GeoJSON');
   console.log('Need to specify path to GeoJSON data; aborting.');
   console.log('Options:');
   console.log('-d, --data\tpath to GeoJOSN file');
-  console.log('-o, --out\tpath for output (default local\'/tiles\'), use \'s3://path/to/bucket\' for S3');
+  console.log('-o, --out\tpath for output (default: \'/tiles\'), use \'s3://path/to/bucket\' for S3');
   console.log('--s3public\tif writing to S3, set \'public-read\' ACL on output objects');
-  console.log('-z, --zoom\tmax zoom to tile to (default 15)');
+  console.log('-z, --zoom\tmax zoom to tile to (default: 15)');
+  console.log('-l, --layer\tlayer name in output (default: \'default\')');
   console.log('--centroids\tgenerate centroid features for polygons (w/property \'centroid: true\')');
   console.log('Example: node tile.js --data=path/to/data.geojson\n');
   return;
@@ -114,7 +116,10 @@ for (var z = start_zoom; z <= end_zoom; z++) {
         continue;
       }
 
-      var data = vtpbf.fromGeojsonVt({ 'default': tile }); // TODO: add option for layer name
+      var layers = {};
+      layers[layerName] = tile;
+
+      var data = vtpbf.fromGeojsonVt(layers);
       if (!data) {
         console.error('ERROR CREATING TILE DATA AT ' + z + ', ' + x + ', ' + y);
         continue;
