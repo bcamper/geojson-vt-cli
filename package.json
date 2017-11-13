@@ -14,6 +14,10 @@
     "url": "git+https://github.com/rfriberg/geojson-vt-cli.git"
   },
   "author": "rfriberg",
+  "contributors": [
+    { "name": "rfriberg" },
+    { "name": "bcamper" }
+  ],
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/rfriberg/geojson-vt-cli/issues"
