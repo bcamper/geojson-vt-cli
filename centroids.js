@@ -1,5 +1,6 @@
 // Takes an array of GeoJSON features, returns an array of centroids for all polygons/multipolygons
-function getCentroidFeatures (features) {
+function getCentroidFeatures (geojson) {
+  var features = geojson.features;
   var centroids = [];
 
   for (var f=0; f < features.length; f++) {
@@ -22,7 +23,11 @@ function getCentroidFeatures (features) {
     }
   }
 
-  return features.filter(function(x){ return x }); // remove null features
+  features = features.filter(function(x){ return x }); // remove null features
+  return {
+    type: 'FeatureCollection',
+    features: features
+  };
 }
 
 // Create a point feature for the cenrtoid of a polygon
@@ -31,8 +36,6 @@ function getCentroidFeatureForPolygon (coordinates, properties) {
   if (!centroid) {
     return;
   }
-
-  properties = Object.assign({ centroid: true }, properties);
 
   return {
     type: 'Feature',

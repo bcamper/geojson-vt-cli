@@ -10,27 +10,28 @@ var getCentroidFeatures = require('./centroids');
 // command line arguments
 var argv = minimist(process.argv.slice(2), {
   alias: { d: 'data', o: 'out', z: 'zoom', l: 'layer' },
-  default: { z: '15', o: 'tiles/', l: 'default' }
+  default: { z: '15', o: 'tiles/', l: 'features', 'centroids': false, 'centroids-layer': 'centroids' }
 });
 
 var input = argv.d;
 var output = argv.o;
 var zoom = argv.z;
 var s3public = argv.s3public;
-var generateCentroids = argv.centroids;
 var layerName = argv.layer;
+var generateCentroids = argv.centroids;
+var centroidsLayerName = argv['centroids-layer'];
 
 if (!input) {
-  console.log('\ngeojson-vt-cli: create tiles from GeoJSON');
-  console.log('Need to specify path to GeoJSON data; aborting.');
-  console.log('Options:');
-  console.log('-d, --data\tpath to GeoJOSN file');
-  console.log('-o, --out\tpath for output (default: \'/tiles\'), use \'s3://path/to/bucket\' for S3');
-  console.log('--s3public\tif writing to S3, set \'public-read\' ACL on output objects');
-  console.log('-z, --zoom\tmax zoom to tile to (default: 15)');
-  console.log('-l, --layer\tlayer name in output (default: \'default\')');
-  console.log('--centroids\tgenerate centroid features for polygons (w/property \'centroid: true\')');
-  console.log('Example: node tile.js --data=path/to/data.geojson\n');
+  console.log('\ngeojson-vt-cli: create MVT tiles from GeoJSON');
+  console.log('\nParameters:');
+  console.log('-d, --data\t\tpath to GeoJSON file (required)');
+  console.log('-o, --out\t\tpath for output (default: \'./tiles\'), use \'s3://path/to/bucket\' for S3');
+  console.log('--s3public\t\tif writing to S3, set \'public-read\' ACL on output objects');
+  console.log('-z, --zoom\t\tmax zoom to tile to (default: 15)');
+  console.log('-l, --layer\t\tlayer name in output (default: \'features\')');
+  console.log('--centroids\t\tgenerate centroid features for polygons (default: false)');
+  console.log('--centroids-layer\tlayer name for centroid features if requested (default: \'centroids\')');
+  console.log('\nExample: node tile.js --data=path/to/data.geojson\n');
   return;
 }
 
@@ -62,26 +63,16 @@ if (!S3) {
 
 console.log('Writing files to ' + output);
 
+// setup geojson-vt indexes
+var tileIndex = createTileIndex(geojson);
+
 // optionally generate centroids for polygons
+var centroidIndex;
 if (generateCentroids) {
-  if (geojson.type === 'FeatureCollection') {
-    var centroids = getCentroidFeatures(geojson.features);
-    Array.prototype.push.apply(geojson.features, centroids);
+  if (geojson.type === 'FeatureCollection') { // TODO: support other geojson types
+    centroidIndex = createTileIndex(getCentroidFeatures(geojson));
   }
 }
-
-// geojson-vt setup
-var tileOptions = {
-    maxZoom: 15,  // max zoom to preserve detail on
-    tolerance: 1.5, // simplification tolerance (higher means simpler)
-    extent: 4096, // tile extent (both width and height)
-    buffer: 0,   // tile buffer on each side
-    debug: 1,      // logging level (0 to disable, 1 or 2)
-
-    indexMaxZoom: 0,        // max zoom in the initial tile index
-    indexMaxPoints: 100000, // max number of points per tile in the index
-};
-var tileindex = geojsonVt(geojson, tileOptions);
 
 var start_zoom = 0;
 var end_zoom = zoom;
@@ -110,7 +101,8 @@ for (var z = start_zoom; z <= end_zoom; z++) {
 
   for (var x = start_x; x <= end_x; x++) {
     for (var y = start_y; y <= end_y; y++) {
-      var tile = tileindex.getTile(z, x, y);
+      // main layer
+      var tile = tileIndex.getTile(z, x, y);
       if (!tile) {
         // console.log('NO TILE AT: ' + z + ', ' + x + ', ' + y + ' (skipping)');
         continue;
@@ -118,6 +110,11 @@ for (var z = start_zoom; z <= end_zoom; z++) {
 
       var layers = {};
       layers[layerName] = tile;
+
+      // optional centroid layer
+      if (centroidIndex) {
+        layers[centroidsLayerName] = centroidIndex.getTile(z, x, y);
+      }
 
       var data = vtpbf.fromGeojsonVt(layers);
       if (!data) {
@@ -136,6 +133,21 @@ for (var z = start_zoom; z <= end_zoom; z++) {
 console.log('-----\nTotal tiles generated:', tile_count);
 
 // --- end main ---
+
+// create geojson-vt index
+function createTileIndex (geojson)  {
+  var tileOptions = {
+      maxZoom: 15,    // max zoom to preserve detail on
+      tolerance: 1.5, // simplification tolerance (higher means simpler)
+      extent: 4096,   // tile extent (both width and height)
+      buffer: 0,      // tile buffer on each side
+      debug: 1,       // logging level (0 to disable, 1 or 2)
+
+      indexMaxZoom: 0,        // max zoom in the initial tile index
+      indexMaxPoints: 100000, // max number of points per tile in the index
+  };
+  return geojsonVt(geojson, tileOptions);
+}
 
 // write a single tile, to local file system or S3
 function writeTile (root, x, y, z, data) {
